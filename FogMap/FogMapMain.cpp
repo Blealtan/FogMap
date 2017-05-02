@@ -15,7 +15,7 @@ FogMapMain::FogMapMain(const std::shared_ptr<DX::DeviceResources>& deviceResourc
 	m_deviceResources->RegisterDeviceNotify(this);
 
 	// TODO: 将此替换为应用程序内容的初始化。
-	m_sceneRenderer = std::unique_ptr<Sample3DSceneRenderer>(new Sample3DSceneRenderer(m_deviceResources));
+	m_sceneRenderer = std::unique_ptr<MainRenderer>(new MainRenderer(m_deviceResources));
 
 	m_fpsTextRenderer = std::unique_ptr<SampleFpsTextRenderer>(new SampleFpsTextRenderer(m_deviceResources));
 
@@ -73,7 +73,7 @@ bool FogMapMain::Render()
 	context->OMSetRenderTargets(1, targets, m_deviceResources->GetDepthStencilView());
 
 	// 清除后台缓冲区和深度模具视图。
-	context->ClearRenderTargetView(m_deviceResources->GetBackBufferRenderTargetView(), DirectX::Colors::CornflowerBlue);
+	context->ClearRenderTargetView(m_deviceResources->GetBackBufferRenderTargetView(), DirectX::Colors::Black);
 	context->ClearDepthStencilView(m_deviceResources->GetDepthStencilView(), D3D11_CLEAR_DEPTH | D3D11_CLEAR_STENCIL, 1.0f, 0);
 
 	// 呈现场景对象。

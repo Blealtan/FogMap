@@ -8,13 +8,13 @@
       <UniqueIdentifier>e9e0ef36-a2cc-4ddb-a137-107ad8a5b05b</UniqueIdentifier>
       <Extensions>bmp;fbx;gif;jpg;jpeg;tga;tiff;tif;png</Extensions>
     </Filter>
-	<Filter Include="内容">
+    <Filter Include="内容">
       <UniqueIdentifier>fa600bd4-6655-4b6a-bbd2-9654a231ae2b</UniqueIdentifier>
     </Filter>
     <ClInclude Include="Common\DirectXHelper.h">
       <Filter>通用</Filter>
     </ClInclude>
-	<ClInclude Include="Common\StepTimer.h">
+    <ClInclude Include="Common\StepTimer.h">
       <Filter>通用</Filter>
     </ClInclude>
     <ClInclude Include="Common\DeviceResources.h">
@@ -23,27 +23,15 @@
     <ClCompile Include="Common\DeviceResources.cpp">
       <Filter>通用</Filter>
     </ClCompile>
-	<ClInclude Include="Content\Sample3DSceneRenderer.h">
-      <Filter>内容</Filter>
-    </ClInclude>
     <ClInclude Include="Content\SampleFpsTextRenderer.h">
       <Filter>内容</Filter>
     </ClInclude>
     <ClInclude Include="Content\ShaderStructures.h">
       <Filter>内容</Filter>
     </ClInclude>
-	<ClCompile Include="Content\Sample3DSceneRenderer.cpp">
-      <Filter>内容</Filter>
-    </ClCompile>
     <ClCompile Include="Content\SampleFpsTextRenderer.cpp">
       <Filter>内容</Filter>
     </ClCompile>
-	<FxCompile Include="Content\SamplePixelShader.hlsl">
-      <Filter>内容</Filter>
-    </FxCompile>
-    <FxCompile Include="Content\SampleVertexShader.hlsl">
-      <Filter>内容</Filter>
-    </FxCompile>
     <Image Include="Assets\LockScreenLogo.scale-200.png">
       <Filter>资产</Filter>
     </Image>
@@ -62,5 +50,40 @@
     <Image Include="Assets\Wide310x150Logo.scale-200.png">
       <Filter>资产</Filter>
     </Image>
+  </ItemGroup>
+  <ItemGroup>
+    <ClCompile Include="App.cpp" />
+    <ClCompile Include="FogMapMain.cpp" />
+    <ClCompile Include="pch.cpp" />
+    <ClCompile Include="Content\MainRenderer.cpp">
+      <Filter>内容</Filter>
+    </ClCompile>
+  </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="App.h" />
+    <ClInclude Include="FogMapMain.h" />
+    <ClInclude Include="pch.h" />
+    <ClInclude Include="Content\MainRenderer.h">
+      <Filter>内容</Filter>
+    </ClInclude>
+  </ItemGroup>
+  <ItemGroup>
+    <Image Include="Assets\StoreLogo.png">
+      <Filter>资产</Filter>
+    </Image>
+  </ItemGroup>
+  <ItemGroup>
+    <AppxManifest Include="Package.appxmanifest" />
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="FogMap_TemporaryKey.pfx" />
+  </ItemGroup>
+  <ItemGroup>
+    <FxCompile Include="Content\ScenePixelShader.hlsl">
+      <Filter>内容</Filter>
+    </FxCompile>
+    <FxCompile Include="Content\SceneVertexShader.hlsl">
+      <Filter>内容</Filter>
+    </FxCompile>
   </ItemGroup>
 </Project>
