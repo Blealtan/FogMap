@@ -24,29 +24,15 @@ void MainRenderer::CreateWindowSizeDependentResources()
 	float aspectRatio = outputSize.Width / outputSize.Height;
 	float fovAngleY = 70.0f * XM_PI / 180.0f;
 
-	if (aspectRatio < 1.0f)
-		fovAngleY *= 2.0f;
+	if (aspectRatio < 1.0f) fovAngleY *= 2.0f;
 
-	XMMATRIX perspectiveMatrix = XMMatrixPerspectiveFovRH(
-		fovAngleY,
-		aspectRatio,
-		0.01f,
-		100.0f
-	);
-
-	XMFLOAT4X4 orientation = m_deviceResources->GetOrientationTransform3D();
-
-	XMMATRIX orientationMatrix = XMLoadFloat4x4(&orientation);
-
-	XMStoreFloat4x4(
-		&m_mvpBufferData.projection,
-		XMMatrixTranspose(perspectiveMatrix * orientationMatrix)
-	);
+	XMMATRIX perspectiveMatrix = XMMatrixPerspectiveFovRH(fovAngleY, aspectRatio, 0.01f, 100.0f);
+	XMMATRIX orientationMatrix = XMLoadFloat4x4(&m_deviceResources->GetOrientationTransform3D());
+	XMStoreFloat4x4(&m_mvpBufferData.projection, XMMatrixTranspose(perspectiveMatrix * orientationMatrix));
 
 	static const XMVECTORF32 eye = { 0.0f, 2.0f, 4.0f, 0.0f };
 	static const XMVECTORF32 at = { 0.0f, 0.0f, 0.0f, 0.0f };
 	static const XMVECTORF32 up = { 0.0f, 1.0f, 0.0f, 0.0f };
-
 	XMStoreFloat4x4(&m_mvpBufferData.view, XMMatrixTranspose(XMMatrixLookAtRH(eye, at, up)));
 }
 
@@ -59,9 +45,7 @@ void MainRenderer::Update(DX::StepTimer const& timer)
 void MainRenderer::Render()
 {
 	if (!m_loadingComplete)
-	{
 		return;
-	}
 
 	auto context = m_deviceResources->GetD3DDeviceContext();
 
@@ -92,18 +76,16 @@ void MainRenderer::Render()
 
 void MainRenderer::CreateDeviceDependentResources()
 {
-	auto loadVSTask = DX::ReadDataAsync(L"SampleVertexShader.cso");
-	auto loadPSTask = DX::ReadDataAsync(L"SamplePixelShader.cso");
+	auto loadVSTask = DX::ReadDataAsync(L"SceneVertexShader.cso");
+	auto loadPSTask = DX::ReadDataAsync(L"ScenePixelShader.cso");
 
 	auto createVSTask = loadVSTask.then([this](const std::vector<byte>& fileData) {
-		DX::ThrowIfFailed(
-			m_deviceResources->GetD3DDevice()->CreateVertexShader(
-				&fileData[0],
-				fileData.size(),
-				nullptr,
-				&m_vertexShader
-			)
-		);
+		DX::ThrowIfFailed(m_deviceResources->GetD3DDevice()->CreateVertexShader(
+			&fileData[0],
+			fileData.size(),
+			nullptr,
+			&m_vertexShader
+		));
 
 		static const D3D11_INPUT_ELEMENT_DESC vertexDesc[] =
 		{
@@ -112,48 +94,35 @@ void MainRenderer::CreateDeviceDependentResources()
 			{ "NORMAL", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, 24, D3D11_INPUT_PER_VERTEX_DATA, 0 },
 		};
 
-		DX::ThrowIfFailed(
-			m_deviceResources->GetD3DDevice()->CreateInputLayout(
-				vertexDesc,
-				ARRAYSIZE(vertexDesc),
-				&fileData[0],
-				fileData.size(),
-				&m_inputLayout
-			)
-		);
+		DX::ThrowIfFailed(m_deviceResources->GetD3DDevice()->CreateInputLayout(
+			vertexDesc,
+			ARRAYSIZE(vertexDesc),
+			&fileData[0],
+			fileData.size(),
+			&m_inputLayout
+		));
 	});
 
 	auto createPSTask = loadPSTask.then([this](const std::vector<byte>& fileData) {
-		DX::ThrowIfFailed(
-			m_deviceResources->GetD3DDevice()->CreatePixelShader(
-				&fileData[0],
-				fileData.size(),
-				nullptr,
-				&m_pixelShader
-			)
-		);
-
-		DX::ThrowIfFailed(
-			m_deviceResources->GetD3DDevice()->CreateBuffer(
-				&CD3D11_BUFFER_DESC(sizeof(ModelViewProjectionConstantBuffer), D3D11_BIND_CONSTANT_BUFFER),
-				nullptr,
-				&m_mvpBuffer
-			)
-		);
-
-		DX::ThrowIfFailed(
-			m_deviceResources->GetD3DDevice()->CreateBuffer(
-				&CD3D11_BUFFER_DESC(sizeof(LightBuffer), D3D11_BIND_CONSTANT_BUFFER),
-				nullptr,
-				&m_lightBuffer
-			)
-		);
+		DX::ThrowIfFailed(m_deviceResources->GetD3DDevice()->CreatePixelShader(
+			&fileData[0],
+			fileData.size(),
+			nullptr,
+			&m_pixelShader
+		));
+		DX::ThrowIfFailed(m_deviceResources->GetD3DDevice()->CreateBuffer(
+			&CD3D11_BUFFER_DESC(sizeof(ModelViewProjectionConstantBuffer), D3D11_BIND_CONSTANT_BUFFER),
+			nullptr,
+			&m_mvpBuffer
+		));
+		DX::ThrowIfFailed(m_deviceResources->GetD3DDevice()->CreateBuffer(
+			&CD3D11_BUFFER_DESC(sizeof(LightBuffer), D3D11_BIND_CONSTANT_BUFFER),
+			nullptr,
+			&m_lightBuffer
+		));
 	});
 
-	// 加载两个着色器后，创建网格。
 	auto createCubeTask = (createPSTask && createVSTask).then([this]() {
-
-		// 加载网格顶点。每个顶点都有一个位置和一个颜色。
 		static const VertexPositionColor cubeVertices[] =
 		{
 			// x = -0.5
@@ -197,14 +166,11 @@ void MainRenderer::CreateDeviceDependentResources()
 		vertexBufferData.pSysMem = cubeVertices;
 		vertexBufferData.SysMemPitch = 0;
 		vertexBufferData.SysMemSlicePitch = 0;
-		CD3D11_BUFFER_DESC vertexBufferDesc(sizeof(cubeVertices), D3D11_BIND_VERTEX_BUFFER);
-		DX::ThrowIfFailed(
-			m_deviceResources->GetD3DDevice()->CreateBuffer(
-				&vertexBufferDesc,
-				&vertexBufferData,
-				&m_vertexBuffer
-			)
-		);
+		DX::ThrowIfFailed(m_deviceResources->GetD3DDevice()->CreateBuffer(
+			&CD3D11_BUFFER_DESC(sizeof(cubeVertices), D3D11_BIND_VERTEX_BUFFER),
+			&vertexBufferData,
+			&m_vertexBuffer
+		));
 
 		static const unsigned short cubeIndices[] =
 		{
@@ -238,13 +204,11 @@ void MainRenderer::CreateDeviceDependentResources()
 		indexBufferData.SysMemPitch = 0;
 		indexBufferData.SysMemSlicePitch = 0;
 		CD3D11_BUFFER_DESC indexBufferDesc(sizeof(cubeIndices), D3D11_BIND_INDEX_BUFFER);
-		DX::ThrowIfFailed(
-			m_deviceResources->GetD3DDevice()->CreateBuffer(
-				&indexBufferDesc,
-				&indexBufferData,
-				&m_indexBuffer
-			)
-		);
+		DX::ThrowIfFailed(m_deviceResources->GetD3DDevice()->CreateBuffer(
+			&CD3D11_BUFFER_DESC(sizeof(cubeIndices), D3D11_BIND_INDEX_BUFFER),
+			&indexBufferData,
+			&m_indexBuffer
+		));
 	});
 
 	createCubeTask.then([this]() {
