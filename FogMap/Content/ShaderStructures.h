@@ -7,6 +7,8 @@ namespace FogMap
 		DirectX::XMFLOAT4X4 model;
 		DirectX::XMFLOAT4X4 view;
 		DirectX::XMFLOAT4X4 projection;
+		DirectX::XMFLOAT4X4 lightView;
+		DirectX::XMFLOAT4X4 lightProjection;
 	};
 
 	struct LightBuffer

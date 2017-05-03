@@ -85,5 +85,16 @@
     <FxCompile Include="Content\SceneVertexShader.hlsl">
       <Filter>内容</Filter>
     </FxCompile>
+    <FxCompile Include="Content\ShadowPixelShader.hlsl">
+      <Filter>内容</Filter>
+    </FxCompile>
+    <FxCompile Include="Content\ShadowVertexShader.hlsl">
+      <Filter>内容</Filter>
+    </FxCompile>
+  </ItemGroup>
+  <ItemGroup>
+    <Resource Include="Assets\model.obj">
+      <Filter>资产</Filter>
+    </Resource>
   </ItemGroup>
 </Project>
