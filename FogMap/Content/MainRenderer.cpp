@@ -5,6 +5,7 @@
 
 #include <sstream>
 #include <unordered_map>
+#include <chrono>
 
 using namespace FogMap;
 
@@ -15,7 +16,7 @@ MainRenderer::MainRenderer(const std::shared_ptr<DX::DeviceResources>& deviceRes
 	m_loadingComplete(false),
 	m_indexCount(0),
 	m_deviceResources(deviceResources),
-	m_lightBufferData{ XMFLOAT4(0.6f, 0.6f, 0.6f, 1.0f), XMFLOAT4(0.4f, 0.4f, 0.4f, 1.0f), XMFLOAT3(-sqrt(3.0f / 4), -sqrt(1.0f / 4), 0) }
+	m_lightBufferData{ XMFLOAT4(0.8f, 0.8f, 0.7f, 1.0f), XMFLOAT4(0.4f, 0.4f, 0.4f, 1.0f), XMFLOAT3(-sqrt(3.0f / 4), -sqrt(1.0f / 4), 0) }
 {
 	CreateDeviceDependentResources();
 	CreateWindowSizeDependentResources();
@@ -38,8 +39,6 @@ void MainRenderer::CreateWindowSizeDependentResources()
 	static const XMVECTORF32 up = { 0.0f, 1.0f, 0.0f, 0.0f };
 	XMStoreFloat4x4(&m_mvpBufferData.view, XMMatrixTranspose(XMMatrixLookAtRH(eye, at, up)));
 
-	XMStoreFloat4x4(&m_mvpBufferData.model, XMMatrixTranspose(XMMatrixRotationY(-XM_PI / 2)));
-
 	XMStoreFloat4x4(&m_mvpBufferData.lightView, XMMatrixTranspose(XMMatrixLookAtRH(
 		-12.0f * XMLoadFloat3(&m_lightBufferData.lightDirection), XMVECTOR{ 0.0f, 0.0f, 0.0f }, XMVECTOR{ 0.0f, 0.1f, 0.0f })));
 	XMStoreFloat4x4(&m_mvpBufferData.lightProjection, XMMatrixTranspose(XMMatrixOrthographicRH(12.0f, 12.0f, 0.0f, 24.0f)));
@@ -58,7 +57,7 @@ void MainRenderer::Render()
 
 	context->UpdateSubresource1(m_sceneLightingBuffer.Get(), 0, NULL, &m_lightBufferData, 0, 0, 0);
 
-	UINT stride = sizeof(VertexPositionColor);
+	UINT stride = sizeof(VertexPositionColorNormal);
 	UINT offset = 0;
 	context->IASetVertexBuffers(0, 1, m_vertexBuffer.GetAddressOf(), &stride, &offset);
 	context->IASetIndexBuffer(m_indexBuffer.Get(), DXGI_FORMAT_R16_UINT, 0);
@@ -72,11 +71,13 @@ void MainRenderer::Render()
 	static const float color[]{ 0.0f, 0.0f, 0.0f, 1.0f };
 	context->ClearRenderTargetView(m_shadowRTV.Get(), color);
 	context->ClearDepthStencilView(m_shadowDSV.Get(), D3D11_CLEAR_DEPTH, 1.0f, 0);
-	context->VSSetShader(m_shadowVertexShader.Get(), nullptr, 0);
-	context->PSSetShader(m_shadowPixelShader.Get(), nullptr, 0);
 
+	context->VSSetShader(m_shadowVertexShader.Get(), nullptr, 0);
+	XMStoreFloat4x4(&m_mvpBufferData.model, XMMatrixTranspose(XMMatrixRotationY(-XM_PI / 2)));
 	context->UpdateSubresource1(m_mvpBuffer.Get(), 0, NULL, &m_mvpBufferData, 0, 0, 0);
 	context->VSSetConstantBuffers1(0, 1, m_mvpBuffer.GetAddressOf(), nullptr, nullptr);
+
+	context->PSSetShader(m_shadowPixelShader.Get(), nullptr, 0);
 	context->DrawIndexed(m_indexCount, 0, 0);
 
 	// Render scene
@@ -92,21 +93,46 @@ void MainRenderer::Render()
 	context->PSSetSamplers(0, 1, m_sceneSampler.GetAddressOf());
 	context->PSSetConstantBuffers1(0, 1, m_sceneLightingBuffer.GetAddressOf(), nullptr, nullptr);
 
+	context->DrawIndexed(m_indexCount, 0, 0);
+
+	float factor[] = { 0.0f, 0.0f, 0.0f, 0.0f };
+	m_deviceResources->GetD3DDeviceContext()->OMSetBlendState(m_blendState.Get(), factor, 0xffffffff);
+
+	auto start = std::chrono::steady_clock::now();
+
+	// Render fog cells
+	stride = sizeof(VertexPositionColor);
+	offset = 0;
+	context->IASetVertexBuffers(0, 1, m_cellVertexBuffer.GetAddressOf(), &stride, &offset);
+	context->IASetIndexBuffer(m_cellIndexBuffer.Get(), DXGI_FORMAT_R16_UINT, 0);
+	context->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+	context->IASetInputLayout(m_cellInputLayout.Get());
+
+	context->VSSetShader(m_cellVertexShader.Get(), nullptr, 0);
+	XMStoreFloat4x4(&m_mvpBufferData.model, XMMatrixIdentity());
 	context->UpdateSubresource1(m_mvpBuffer.Get(), 0, NULL, &m_mvpBufferData, 0, 0, 0);
 	context->VSSetConstantBuffers1(0, 1, m_mvpBuffer.GetAddressOf(), nullptr, nullptr);
-	context->DrawIndexed(m_indexCount, 0, 0);
+
+	context->PSSetShader(m_cellPixelShader.Get(), nullptr, 0);
+	context->PSSetShaderResources(0, 1, m_shadowSRV.GetAddressOf());
+	context->PSSetSamplers(0, 1, m_sceneSampler.GetAddressOf());
+
+	context->DrawIndexed(m_cellIndexCount, 0, 0);
+
+	auto dt = std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now() - start);
+
+	// Release shadow map SRV and reset blend state
 	ID3D11ShaderResourceView *null_srv = nullptr;
 	context->PSSetShaderResources(0, 1, &null_srv);
+
+	m_deviceResources->GetD3DDeviceContext()->OMSetBlendState(nullptr, factor, 0xffffffff);
 }
 
 void MainRenderer::CreateDeviceDependentResources()
 {
-	auto loadVSTask = DX::ReadDataAsync(L"SceneVertexShader.cso");
-	auto loadPSTask = DX::ReadDataAsync(L"ScenePixelShader.cso");
-	auto loadShadowVSTask = DX::ReadDataAsync(L"ShadowVertexShader.cso");
-	auto loadShadowPSTask = DX::ReadDataAsync(L"ShadowPixelShader.cso");
-
-	auto createVSTask = loadVSTask.then([this](const std::vector<byte>& fileData) {
+	auto loadSceneVSTask = DX::ReadDataAsync(L"SceneVertexShader.cso");
+	auto loadScenePSTask = DX::ReadDataAsync(L"ScenePixelShader.cso");
+	auto createSceneVSTask = loadSceneVSTask.then([this](const std::vector<byte>& fileData) {
 		DX::ThrowIfFailed(m_deviceResources->GetD3DDevice()->CreateVertexShader(
 			&fileData[0],
 			fileData.size(),
@@ -135,8 +161,7 @@ void MainRenderer::CreateDeviceDependentResources()
 			&m_sceneSampler
 		));
 	});
-
-	auto createPSTask = loadPSTask.then([this](const std::vector<byte>& fileData) {
+	auto createScenePSTask = loadScenePSTask.then([this](const std::vector<byte>& fileData) {
 		DX::ThrowIfFailed(m_deviceResources->GetD3DDevice()->CreatePixelShader(
 			&fileData[0],
 			fileData.size(),
@@ -155,6 +180,8 @@ void MainRenderer::CreateDeviceDependentResources()
 		));
 	});
 
+	auto loadShadowVSTask = DX::ReadDataAsync(L"ShadowVertexShader.cso");
+	auto loadShadowPSTask = DX::ReadDataAsync(L"ShadowPixelShader.cso");
 	auto createShadowVSTask = loadShadowVSTask.then([this](const std::vector<byte>& fileData) {
 		DX::ThrowIfFailed(m_deviceResources->GetD3DDevice()->CreateVertexShader(
 			&fileData[0],
@@ -173,7 +200,6 @@ void MainRenderer::CreateDeviceDependentResources()
 			&m_shadowDSV
 		));
 	});
-
 	auto createShadowPSTask = loadShadowPSTask.then([this](const std::vector<byte>& fileData) {
 		DX::ThrowIfFailed(m_deviceResources->GetD3DDevice()->CreatePixelShader(
 			&fileData[0],
@@ -198,15 +224,89 @@ void MainRenderer::CreateDeviceDependentResources()
 		));
 	});
 
+	auto loadCellVSTask = DX::ReadDataAsync(L"CellVertexShader.cso");
+	auto loadCellPSTask = DX::ReadDataAsync(L"CellPixelShader.cso");
+	auto createCellVSTask = loadCellVSTask.then([this](const std::vector<byte>& fileData) {
+		DX::ThrowIfFailed(m_deviceResources->GetD3DDevice()->CreateVertexShader(
+			&fileData[0],
+			fileData.size(),
+			nullptr,
+			&m_cellVertexShader
+		));
+
+		static const D3D11_INPUT_ELEMENT_DESC vertexDesc[] =
+		{
+			{ "POSITION", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, 0, D3D11_INPUT_PER_VERTEX_DATA, 0 },
+			{ "COLOR", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, 12, D3D11_INPUT_PER_VERTEX_DATA, 0 },
+		};
+		DX::ThrowIfFailed(m_deviceResources->GetD3DDevice()->CreateInputLayout(
+			vertexDesc,
+			ARRAYSIZE(vertexDesc),
+			&fileData[0],
+			fileData.size(),
+			&m_cellInputLayout
+		));
+	});
+	auto createCellPSTask = loadCellPSTask.then([this](const std::vector<byte>& fileData) {
+		DX::ThrowIfFailed(m_deviceResources->GetD3DDevice()->CreatePixelShader(
+			&fileData[0],
+			fileData.size(),
+			nullptr,
+			&m_cellPixelShader
+		));
+	});
+	auto createCellTask = (createCellVSTask && createCellPSTask).then([this]() {
+		constexpr int fogMapSize = 128;
+		VertexPositionColor cellVertices[fogMapSize * 4];
+		for (int z = 0; z < fogMapSize; ++z)
+		{
+			cellVertices[z * 4 + 0] = { XMFLOAT3(-4.5f, 0.0f, z * 9.0f / fogMapSize - 4.5f),
+				XMFLOAT3(m_lightBufferData.diffuseColor.x, m_lightBufferData.diffuseColor.y, m_lightBufferData.diffuseColor.z) };
+			cellVertices[z * 4 + 1] = { XMFLOAT3(4.5f, 0.0f, z * 9.0f / fogMapSize - 4.5f),
+				XMFLOAT3(m_lightBufferData.diffuseColor.x, m_lightBufferData.diffuseColor.y, m_lightBufferData.diffuseColor.z) };
+			cellVertices[z * 4 + 2] = { XMFLOAT3(-4.5f, 4.0f, z * 9.0f / fogMapSize - 4.5f),
+				XMFLOAT3(m_lightBufferData.diffuseColor.x, m_lightBufferData.diffuseColor.y, m_lightBufferData.diffuseColor.z) };
+			cellVertices[z * 4 + 3] = { XMFLOAT3(4.5f, 4.0f, z * 9.0f / fogMapSize - 4.5f),
+				XMFLOAT3(m_lightBufferData.diffuseColor.x, m_lightBufferData.diffuseColor.y, m_lightBufferData.diffuseColor.z) };
+		}
+		D3D11_SUBRESOURCE_DATA vertexBufferData = { 0 };
+		vertexBufferData.pSysMem = cellVertices;
+		vertexBufferData.SysMemPitch = 0;
+		vertexBufferData.SysMemSlicePitch = 0;
+		DX::ThrowIfFailed(m_deviceResources->GetD3DDevice()->CreateBuffer(
+			&CD3D11_BUFFER_DESC(sizeof(cellVertices), D3D11_BIND_VERTEX_BUFFER),
+			&vertexBufferData,
+			&m_cellVertexBuffer
+		));
+
+		unsigned short cellIndices[fogMapSize * 6];
+		for (int z = 0; z < fogMapSize; ++z)
+		{
+			cellIndices[z * 6 + 0] = z * 4 + 0;
+			cellIndices[z * 6 + 1] = z * 4 + 2;
+			cellIndices[z * 6 + 2] = z * 4 + 1;
+			cellIndices[z * 6 + 3] = z * 4 + 1;
+			cellIndices[z * 6 + 4] = z * 4 + 2;
+			cellIndices[z * 6 + 5] = z * 4 + 3;
+		}
+		m_cellIndexCount = ARRAYSIZE(cellIndices);
+		D3D11_SUBRESOURCE_DATA indexBufferData = { 0 };
+		indexBufferData.pSysMem = cellIndices;
+		indexBufferData.SysMemPitch = 0;
+		indexBufferData.SysMemSlicePitch = 0;
+		DX::ThrowIfFailed(m_deviceResources->GetD3DDevice()->CreateBuffer(
+			&CD3D11_BUFFER_DESC(sizeof(cellIndices), D3D11_BIND_INDEX_BUFFER),
+			&indexBufferData,
+			&m_cellIndexBuffer
+		));
+	});
+
 	auto loadCubeTask = DX::ReadDataAsync(L"model.obj").then([this](const std::vector<byte>& fileData) {
 		std::stringstream ss;
 		for (auto c : fileData) ss << c;
 		std::vector<XMFLOAT3> vert;
 		std::vector<XMFLOAT3> norm;
-		std::unordered_map<int, std::pair<int, VertexPositionColor>> vnBuffer;
-
-		vertices.clear();
-		indices.clear();
+		std::unordered_map<int, std::pair<int, VertexPositionColorNormal>> vnBuffer;
 
 		while (!ss.eof())
 		{
@@ -237,7 +337,7 @@ void MainRenderer::CreateDeviceDependentResources()
 					iss >> vi; iss.get(); iss.get(); iss >> ni;
 					ind[i] = vi * norm.size() + ni;
 					if (vnBuffer.count(ind[i]) == 0)
-						vnBuffer[ind[i]] = std::make_pair(vnBuffer.size(), VertexPositionColor{ vert[vi - 1], XMFLOAT3(0.9f, 0.9f, 0.9f), norm[ni - 1] });
+						vnBuffer[ind[i]] = std::make_pair(vnBuffer.size(), VertexPositionColorNormal{ vert[vi - 1], XMFLOAT3(0.9f, 0.9f, 0.9f), norm[ni - 1] });
 				}
 				auto v0 = XMLoadFloat3(&vnBuffer[ind[0]].second.pos);
 				auto v1 = XMLoadFloat3(&vnBuffer[ind[1]].second.pos);
@@ -254,82 +354,18 @@ void MainRenderer::CreateDeviceDependentResources()
 		for (auto p : vnBuffer)
 			vertices[p.second.first] = p.second.second;
 	});
-
-	auto createCubeTask = (createPSTask && createVSTask && createShadowVSTask && createShadowPSTask && loadCubeTask).then([this]() {
-		static const VertexPositionColor cubeVertices[] =
-		{
-			// x = -0.5
-			{ XMFLOAT3(-0.5f, -0.5f, -0.5f), XMFLOAT3(0.0f, 0.0f, 0.0f), XMFLOAT3(-1.0f, 0.0f, 0.0f) },
-			{ XMFLOAT3(-0.5f, -0.5f, +0.5f), XMFLOAT3(0.0f, 0.0f, 1.0f), XMFLOAT3(-1.0f, 0.0f, 0.0f) },
-			{ XMFLOAT3(-0.5f, +0.5f, -0.5f), XMFLOAT3(0.0f, 1.0f, 0.0f), XMFLOAT3(-1.0f, 0.0f, 0.0f) },
-			{ XMFLOAT3(-0.5f, +0.5f, +0.5f), XMFLOAT3(0.0f, 1.0f, 1.0f), XMFLOAT3(-1.0f, 0.0f, 0.0f) },
-			// x = 0.5
-			{ XMFLOAT3(+0.5f, -0.5f, -0.5f), XMFLOAT3(1.0f, 0.0f, 0.0f), XMFLOAT3(+1.0f, 0.0f, 0.0f) },
-			{ XMFLOAT3(+0.5f, -0.5f, +0.5f), XMFLOAT3(1.0f, 0.0f, 1.0f), XMFLOAT3(+1.0f, 0.0f, 0.0f) },
-			{ XMFLOAT3(+0.5f, +0.5f, -0.5f), XMFLOAT3(1.0f, 1.0f, 0.0f), XMFLOAT3(+1.0f, 0.0f, 0.0f) },
-			{ XMFLOAT3(+0.5f, +0.5f, +0.5f), XMFLOAT3(1.0f, 1.0f, 1.0f), XMFLOAT3(+1.0f, 0.0f, 0.0f) },
-			// y = -0.5
-			{ XMFLOAT3(-0.5f, -0.5f, -0.5f), XMFLOAT3(0.0f, 0.0f, 0.0f), XMFLOAT3(0.0f, -1.0f, 0.0f) },
-			{ XMFLOAT3(-0.5f, -0.5f, +0.5f), XMFLOAT3(0.0f, 0.0f, 1.0f), XMFLOAT3(0.0f, -1.0f, 0.0f) },
-			{ XMFLOAT3(+0.5f, -0.5f, -0.5f), XMFLOAT3(1.0f, 0.0f, 0.0f), XMFLOAT3(0.0f, -1.0f, 0.0f) },
-			{ XMFLOAT3(+0.5f, -0.5f, +0.5f), XMFLOAT3(1.0f, 0.0f, 1.0f), XMFLOAT3(0.0f, -1.0f, 0.0f) },
-			// y = 0.5
-			{ XMFLOAT3(-0.5f, +0.5f, -0.5f), XMFLOAT3(0.0f, 1.0f, 0.0f), XMFLOAT3(0.0f, +1.0f, 0.0f) },
-			{ XMFLOAT3(-0.5f, +0.5f, +0.5f), XMFLOAT3(0.0f, 1.0f, 1.0f), XMFLOAT3(0.0f, +1.0f, 0.0f) },
-			{ XMFLOAT3(+0.5f, +0.5f, -0.5f), XMFLOAT3(1.0f, 1.0f, 0.0f), XMFLOAT3(0.0f, +1.0f, 0.0f) },
-			{ XMFLOAT3(+0.5f, +0.5f, +0.5f), XMFLOAT3(1.0f, 1.0f, 1.0f), XMFLOAT3(0.0f, +1.0f, 0.0f) },
-			// z = -0.5
-			{ XMFLOAT3(-0.5f, -0.5f, -0.5f), XMFLOAT3(0.0f, 0.0f, 0.0f), XMFLOAT3(0.0f, 0.0f, -1.0f) },
-			{ XMFLOAT3(-0.5f, +0.5f, -0.5f), XMFLOAT3(0.0f, 1.0f, 0.0f), XMFLOAT3(0.0f, 0.0f, -1.0f) },
-			{ XMFLOAT3(+0.5f, -0.5f, -0.5f), XMFLOAT3(1.0f, 0.0f, 0.0f), XMFLOAT3(0.0f, 0.0f, -1.0f) },
-			{ XMFLOAT3(+0.5f, +0.5f, -0.5f), XMFLOAT3(1.0f, 1.0f, 0.0f), XMFLOAT3(0.0f, 0.0f, -1.0f) },
-			// z = 0.5
-			{ XMFLOAT3(-0.5f, -0.5f, +0.5f), XMFLOAT3(0.0f, 0.0f, 1.0f), XMFLOAT3(0.0f, 0.0f, +1.0f) },
-			{ XMFLOAT3(-0.5f, +0.5f, +0.5f), XMFLOAT3(0.0f, 1.0f, 1.0f), XMFLOAT3(0.0f, 0.0f, +1.0f) },
-			{ XMFLOAT3(+0.5f, -0.5f, +0.5f), XMFLOAT3(1.0f, 0.0f, 1.0f), XMFLOAT3(0.0f, 0.0f, +1.0f) },
-			{ XMFLOAT3(+0.5f, +0.5f, +0.5f), XMFLOAT3(1.0f, 1.0f, 1.0f), XMFLOAT3(0.0f, 0.0f, +1.0f) },
-			// Floor
-			{ XMFLOAT3(-4.0f, 0.0f, -4.0f), XMFLOAT3(1.0f, 1.0f, 1.0f), XMFLOAT3(0.0f, 1.0f, 0.0f) },
-			{ XMFLOAT3(-4.0f, 0.0f, +4.0f), XMFLOAT3(1.0f, 1.0f, 1.0f), XMFLOAT3(0.0f, 1.0f, 0.0f) },
-			{ XMFLOAT3(+4.0f, 0.0f, -4.0f), XMFLOAT3(1.0f, 1.0f, 1.0f), XMFLOAT3(0.0f, 1.0f, 0.0f) },
-			{ XMFLOAT3(+4.0f, 0.0f, +4.0f), XMFLOAT3(1.0f, 1.0f, 1.0f), XMFLOAT3(0.0f, 1.0f, 0.0f) },
-		};
-
+	auto createCubeTask = (createScenePSTask && createSceneVSTask && createShadowVSTask && createShadowPSTask && loadCubeTask).then([this]() {
 		D3D11_SUBRESOURCE_DATA vertexBufferData = { 0 };
 		vertexBufferData.pSysMem = vertices.data();
 		vertexBufferData.SysMemPitch = 0;
 		vertexBufferData.SysMemSlicePitch = 0;
 		DX::ThrowIfFailed(m_deviceResources->GetD3DDevice()->CreateBuffer(
-			&CD3D11_BUFFER_DESC(sizeof(VertexPositionColor) * vertices.size(), D3D11_BIND_VERTEX_BUFFER),
+			&CD3D11_BUFFER_DESC(sizeof(VertexPositionColorNormal) * vertices.size(), D3D11_BIND_VERTEX_BUFFER),
 			&vertexBufferData,
 			&m_vertexBuffer
 		));
 
-		static const unsigned short cubeIndices[] =
-		{
-			0,2,1, // -x
-			1,2,3,
-
-			4,5,6, // +x
-			5,7,6,
-
-			8,9,10, // -y
-			10,9,11,
-
-			12,14,13, // +y
-			15,13,14,
-
-			16,18,17, // -z
-			17,18,19,
-
-			20,21,22, // +z
-			21,23,22,
-
-			24,26,25, // Floor
-			25,26,27,
-		};
 		m_indexCount = indices.size();
-
 		D3D11_SUBRESOURCE_DATA indexBufferData = { 0 };
 		indexBufferData.pSysMem = indices.data();
 		indexBufferData.SysMemPitch = 0;
@@ -341,7 +377,22 @@ void MainRenderer::CreateDeviceDependentResources()
 		));
 	});
 
-	createCubeTask.then([this]() { m_loadingComplete = true; });
+	createCubeTask.then([this]() {
+		D3D11_BLEND_DESC desc;
+		desc.AlphaToCoverageEnable = FALSE;
+		desc.IndependentBlendEnable = FALSE;
+		const D3D11_RENDER_TARGET_BLEND_DESC defaultRenderTargetBlendDesc =
+		{
+			TRUE,
+			D3D11_BLEND_SRC_ALPHA, D3D11_BLEND_INV_SRC_ALPHA, D3D11_BLEND_OP_ADD,
+			D3D11_BLEND_ONE, D3D11_BLEND_ZERO, D3D11_BLEND_OP_ADD,
+			D3D11_COLOR_WRITE_ENABLE_ALL,
+		};
+		for (UINT i = 0; i < D3D11_SIMULTANEOUS_RENDER_TARGET_COUNT; ++i)
+			desc.RenderTarget[i] = defaultRenderTargetBlendDesc;
+		DX::ThrowIfFailed(m_deviceResources->GetD3DDevice()->CreateBlendState(&desc, &m_blendState));
+		m_loadingComplete = true;
+	});
 }
 
 void MainRenderer::ReleaseDeviceDependentResources()

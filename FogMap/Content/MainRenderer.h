@@ -39,11 +39,20 @@ namespace FogMap
 		Microsoft::WRL::ComPtr<ID3D11Texture2D>				m_shadowDepthStencilBuffer;
 		Microsoft::WRL::ComPtr<ID3D11DepthStencilView>		m_shadowDSV;
 
+		Microsoft::WRL::ComPtr<ID3D11Buffer>				m_cellVertexBuffer;
+		Microsoft::WRL::ComPtr<ID3D11Buffer>				m_cellIndexBuffer;
+		Microsoft::WRL::ComPtr<ID3D11InputLayout>			m_cellInputLayout;
+		Microsoft::WRL::ComPtr<ID3D11VertexShader>			m_cellVertexShader;
+		Microsoft::WRL::ComPtr<ID3D11PixelShader>			m_cellPixelShader;
+
+		Microsoft::WRL::ComPtr<ID3D11BlendState>			m_blendState;
+
 		ModelViewProjectionConstantBuffer m_mvpBufferData;
 		LightBuffer m_lightBufferData;
 		uint32	m_indexCount;
+		uint32	m_cellIndexCount;
 
-		std::vector<VertexPositionColor> vertices;
+		std::vector<VertexPositionColorNormal> vertices;
 		std::vector<unsigned short> indices;
 
 		bool	m_loadingComplete;
