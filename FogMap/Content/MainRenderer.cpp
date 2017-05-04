@@ -5,7 +5,6 @@
 
 #include <sstream>
 #include <unordered_map>
-#include <chrono>
 
 using namespace FogMap;
 
@@ -98,8 +97,6 @@ void MainRenderer::Render()
 	float factor[] = { 0.0f, 0.0f, 0.0f, 0.0f };
 	m_deviceResources->GetD3DDeviceContext()->OMSetBlendState(m_blendState.Get(), factor, 0xffffffff);
 
-	auto start = std::chrono::steady_clock::now();
-
 	// Render fog cells
 	stride = sizeof(VertexPositionColor);
 	offset = 0;
@@ -118,8 +115,6 @@ void MainRenderer::Render()
 	context->PSSetSamplers(0, 1, m_sceneSampler.GetAddressOf());
 
 	context->DrawIndexed(m_cellIndexCount, 0, 0);
-
-	auto dt = std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now() - start);
 
 	// Release shadow map SRV and reset blend state
 	ID3D11ShaderResourceView *null_srv = nullptr;
@@ -256,7 +251,7 @@ void MainRenderer::CreateDeviceDependentResources()
 		));
 	});
 	auto createCellTask = (createCellVSTask && createCellPSTask).then([this]() {
-		constexpr int fogMapSize = 128;
+		constexpr int fogMapSize = 64;
 		VertexPositionColor cellVertices[fogMapSize * 4];
 		for (int z = 0; z < fogMapSize; ++z)
 		{
