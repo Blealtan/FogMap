@@ -10,13 +10,13 @@ cbuffer ModelViewProjectionConstantBuffer : register(b0)
 struct VertexShaderInput
 {
 	float3 pos : POSITION;
-	float3 color : COLOR0;
+	float4 color : COLOR0;
 };
 
 struct PixelShaderInput
 {
 	float4 pos : SV_POSITION;
-	float3 color : COLOR0;
+	float4 color : COLOR0;
 	float4 lightViewPos : TEXCOORD0;
 };
 

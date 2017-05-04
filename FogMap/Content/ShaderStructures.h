@@ -24,12 +24,11 @@ namespace FogMap
 		DirectX::XMFLOAT3 pos;
 		DirectX::XMFLOAT3 color;
 		DirectX::XMFLOAT3 norm;
-		float padding;
 	};
 
 	struct VertexPositionColor
 	{
 		DirectX::XMFLOAT3 pos;
-		DirectX::XMFLOAT3 color;
+		DirectX::XMFLOAT4 color;
 	};
 }

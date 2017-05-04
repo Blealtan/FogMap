@@ -15,7 +15,8 @@ MainRenderer::MainRenderer(const std::shared_ptr<DX::DeviceResources>& deviceRes
 	m_loadingComplete(false),
 	m_indexCount(0),
 	m_deviceResources(deviceResources),
-	m_lightBufferData{ XMFLOAT4(0.8f, 0.8f, 0.7f, 1.0f), XMFLOAT4(0.4f, 0.4f, 0.4f, 1.0f), XMFLOAT3(-sqrt(3.0f / 4), -sqrt(1.0f / 4), 0) }
+	m_lightBufferData{ XMFLOAT4(0.8f, 0.8f, 0.7f, 1.0f), XMFLOAT4(0.4f, 0.4f, 0.4f, 1.0f) },
+	m_lightDirection(-sqrt(3.0f), -1, 0)
 {
 	CreateDeviceDependentResources();
 	CreateWindowSizeDependentResources();
@@ -37,14 +38,17 @@ void MainRenderer::CreateWindowSizeDependentResources()
 	static const XMVECTORF32 at = { 0.0f, 0.0f, 0.0f, 0.0f };
 	static const XMVECTORF32 up = { 0.0f, 1.0f, 0.0f, 0.0f };
 	XMStoreFloat4x4(&m_mvpBufferData.view, XMMatrixTranspose(XMMatrixLookAtRH(eye, at, up)));
-
-	XMStoreFloat4x4(&m_mvpBufferData.lightView, XMMatrixTranspose(XMMatrixLookAtRH(
-		-12.0f * XMLoadFloat3(&m_lightBufferData.lightDirection), XMVECTOR{ 0.0f, 0.0f, 0.0f }, XMVECTOR{ 0.0f, 0.1f, 0.0f })));
 	XMStoreFloat4x4(&m_mvpBufferData.lightProjection, XMMatrixTranspose(XMMatrixOrthographicRH(12.0f, 12.0f, 0.0f, 24.0f)));
 }
 
 void MainRenderer::Update(DX::StepTimer const& timer)
 {
+	m_lightDirection.z += m_lightSpeed * timer.GetElapsedSeconds();
+	if (m_lightDirection.z > 0.3f) m_lightSpeed = -abs(m_lightSpeed);
+	if (m_lightDirection.z < -0.3f) m_lightSpeed = abs(m_lightSpeed);
+	XMStoreFloat3(&m_lightBufferData.lightDirection, XMVector3Normalize(XMLoadFloat3(&m_lightDirection)));
+	XMStoreFloat4x4(&m_mvpBufferData.lightView, XMMatrixTranspose(XMMatrixLookAtRH(
+		-12.0f * XMLoadFloat3(&m_lightBufferData.lightDirection), XMVECTOR{ 0.0f, 0.0f, 0.0f }, XMVECTOR{ 0.0f, 0.1f, 0.0f })));
 }
 
 void MainRenderer::Render()
@@ -232,7 +236,7 @@ void MainRenderer::CreateDeviceDependentResources()
 		static const D3D11_INPUT_ELEMENT_DESC vertexDesc[] =
 		{
 			{ "POSITION", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, 0, D3D11_INPUT_PER_VERTEX_DATA, 0 },
-			{ "COLOR", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, 12, D3D11_INPUT_PER_VERTEX_DATA, 0 },
+			{ "COLOR", 0, DXGI_FORMAT_R32G32B32A32_FLOAT, 0, 12, D3D11_INPUT_PER_VERTEX_DATA, 0 },
 		};
 		DX::ThrowIfFailed(m_deviceResources->GetD3DDevice()->CreateInputLayout(
 			vertexDesc,
@@ -255,14 +259,14 @@ void MainRenderer::CreateDeviceDependentResources()
 		VertexPositionColor cellVertices[fogMapSize * 4];
 		for (int z = 0; z < fogMapSize; ++z)
 		{
-			cellVertices[z * 4 + 0] = { XMFLOAT3(-4.5f, 0.0f, z * 9.0f / fogMapSize - 4.5f),
-				XMFLOAT3(m_lightBufferData.diffuseColor.x, m_lightBufferData.diffuseColor.y, m_lightBufferData.diffuseColor.z) };
-			cellVertices[z * 4 + 1] = { XMFLOAT3(4.5f, 0.0f, z * 9.0f / fogMapSize - 4.5f),
-				XMFLOAT3(m_lightBufferData.diffuseColor.x, m_lightBufferData.diffuseColor.y, m_lightBufferData.diffuseColor.z) };
-			cellVertices[z * 4 + 2] = { XMFLOAT3(-4.5f, 4.0f, z * 9.0f / fogMapSize - 4.5f),
-				XMFLOAT3(m_lightBufferData.diffuseColor.x, m_lightBufferData.diffuseColor.y, m_lightBufferData.diffuseColor.z) };
-			cellVertices[z * 4 + 3] = { XMFLOAT3(4.5f, 4.0f, z * 9.0f / fogMapSize - 4.5f),
-				XMFLOAT3(m_lightBufferData.diffuseColor.x, m_lightBufferData.diffuseColor.y, m_lightBufferData.diffuseColor.z) };
+			cellVertices[z * 4 + 0] = { XMFLOAT3(-4.5f, 0.0f, z * 4.0f / fogMapSize - 2.0f),
+				XMFLOAT4(m_lightBufferData.diffuseColor.x, m_lightBufferData.diffuseColor.y, m_lightBufferData.diffuseColor.z, 0.03f) };
+			cellVertices[z * 4 + 1] = { XMFLOAT3(4.5f, 0.0f, z * 4.0f / fogMapSize - 2.0f),
+				XMFLOAT4(m_lightBufferData.diffuseColor.x, m_lightBufferData.diffuseColor.y, m_lightBufferData.diffuseColor.z, 0.03f) };
+			cellVertices[z * 4 + 2] = { XMFLOAT3(-4.5f, 4.0f, z * 4.0f / fogMapSize - 2.0f),
+				XMFLOAT4(m_lightBufferData.diffuseColor.x, m_lightBufferData.diffuseColor.y, m_lightBufferData.diffuseColor.z, 0.03f) };
+			cellVertices[z * 4 + 3] = { XMFLOAT3(4.5f, 4.0f, z * 4.0f / fogMapSize - 2.0f),
+				XMFLOAT4(m_lightBufferData.diffuseColor.x, m_lightBufferData.diffuseColor.y, m_lightBufferData.diffuseColor.z, 0.03f) };
 		}
 		D3D11_SUBRESOURCE_DATA vertexBufferData = { 0 };
 		vertexBufferData.pSysMem = cellVertices;

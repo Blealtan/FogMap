@@ -52,6 +52,9 @@ namespace FogMap
 		uint32	m_indexCount;
 		uint32	m_cellIndexCount;
 
+		DirectX::XMFLOAT3 m_lightDirection;
+		float m_lightSpeed = 0.3f;
+
 		std::vector<VertexPositionColorNormal> vertices;
 		std::vector<unsigned short> indices;
 
